@@ -260,46 +260,48 @@ if st.session_state.get("do_effect"):
     )
     st.markdown(f"<div class='flash'></div><div class='burst'>{burst}</div>", unsafe_allow_html=True)
 
-    # áudio + label "YAAAY" — chave única por clique
+    # áudio + label "YAAAY" — sem `key`, para Streamlit que não suporta
     st.components.v1.html(
-        f"""
+        """
 <!DOCTYPE html><html><head><meta charset="utf-8" />
 <style>
-.yay {{
+.yay {
   position: fixed; left: 50%; top: 38%; transform: translate(-50%,-50%);
   font: 900 42px/1.1 "Comic Sans MS", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   color: #6e4d00; text-shadow: 0 2px 0 #fff6, 0 6px 20px rgba(255,140,180,.35);
   animation: popYay .9s ease-out forwards; z-index: 6; pointer-events:none;
-}}
-@keyframes popYay {{
-  0% {{ opacity: 0; transform: translate(-50%,-50%) scale(.7); }}
-  30%{{ opacity: 1; transform: translate(-50%,-50%) scale(1.08); }}
-  100%{{ opacity: 0; transform: translate(-50%,-56%) scale(1.00); }}
-}}
+}
+@keyframes popYay {
+  0% { opacity: 0; transform: translate(-50%,-50%) scale(.7); }
+  30%{ opacity: 1; transform: translate(-50%,-50%) scale(1.08); }
+  100%{ opacity: 0; transform: translate(-50%,-56%) scale(1.00); }
+}
 </style></head><body>
 <div class="yay">YAAAY! 💖💧</div>
 <script>
-(function(){{
+(function(){
   const AC = window.AudioContext || window.webkitAudioContext;
   const ctx = new AC(); const now = ctx.currentTime;
-  function beep(f,t,d,type='sine',g=0.15){{
-    const o=ctx.createOscillator(), G=ctx.createGain(); o.type=type; o.frequency.value=f;
+  function beep(f,t,d,type='sine',g=0.15){
+    const o=ctx.createOscillator(), G=ctx.createGain();
+    o.type=type; o.frequency.value=f;
     G.gain.setValueAtTime(0.0001, now+t);
     G.gain.exponentialRampToValueAtTime(g, now+t+0.03);
     G.gain.exponentialRampToValueAtTime(0.0001, now+t+d);
     o.connect(G).connect(ctx.destination); o.start(now+t); o.stop(now+t+d+0.05);
-  }}
+  }
   // glup glup + tlin de fada
   beep(640,0.00,0.10,'sine',0.18);
   beep(520,0.10,0.12,'sine',0.16);
   beep(1200,0.24,0.08,'triangle',0.12);
-}})();
+})();
 </script>
 </body></html>
         """,
-        height=0,
-        key=f"yay-{st.session_state.fx_key}"
+        height=1,  # altura mínima
+        scrolling=False
     )
+
 
 # ================== SIDEBAR (só configs úteis) ==================
 with st.sidebar:
