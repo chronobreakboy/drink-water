@@ -43,7 +43,7 @@ html, body, [data-testid="stAppViewContainer"]{{
 .container{{max-width:520px; margin:0 auto;}}
 .card{{background:var(--card); border:3px solid var(--stroke); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; position:relative; padding:16px;}}
 .title{{text-align:center; font-size:32px; font-weight:800; color:#6e4d00; text-shadow:0 1px 0 #fff3; margin:6px 0}}
-.subtitle{{text-align:center; font-size:14px; color:var(--muted); margin-bottom:14px}}
+.subtitle{{text-align:center; font-size:14px; color:var(--muted); margin-bottom:10px}}
 
 .stButton>button{{width:100%; padding:16px 18px; font-weight:900; border-radius:var(--radius); border:0; box-shadow:var(--shadow);
                   letter-spacing:.2px; transform: translateY(0); transition: transform .05s ease, filter .15s ease;}}
@@ -52,19 +52,31 @@ html, body, [data-testid="stAppViewContainer"]{{
 .btn-sec{{ background: var(--btn-grad-2); color:#583d26 !important; }}
 .btn-sec:hover{{ filter: brightness(1.05); transform: translateY(-1px); }}
 
-.progress-wrap{{margin: 12px 2px 8px 2px}}
-.progress-label{{font-size:13px; color:var(--muted); margin-bottom:8px}}
+.progress-wrap{{margin: 10px 2px 6px 2px}}
+.progress-label{{font-size:13px; color:var(--muted); margin-bottom:6px}}
 .bar{{height:12px; width:100%; background:#fff9; border-radius:999px; overflow:hidden; border:2px solid #ffd89b}}
 .fill{{height:100%; background:linear-gradient(90deg,#ffa1bc,#ffcf6f); width:0%; transition:width .25s ease}}
 
-.cups{{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px}}
-.cup{{background:white; border:2px solid #ffe2a9; border-radius:12px; display:flex; align-items:center; justify-content:center;
-     font-size:34px; padding:10px; min-height:60px; box-shadow:0 3px 8px rgba(255,182,193,.25); animation:pop .15s ease}}
+.cups{{
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}}
+.cup{{
+  background:white; border:2px solid #ffe2a9; border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  padding:6px; min-height:56px;
+  box-shadow:0 3px 8px rgba(255,182,193,.25); animation:pop .15s ease
+}}
+.cup img{{ width:100%; height:auto; max-height:64px; object-fit:contain; }}
+
 @keyframes pop{{from{{transform:scale(.95); opacity:.6}} to{{transform:scale(1); opacity:1}}}}
 
 .small{{font-size:12px; text-align:center; color:var(--muted); margin-top:6px}}
 .msg{{text-align:center; font-weight:800; color:#6e4d00; margin-top:8px}}
 
+/* flash + burst */
 .flash{{position:fixed; inset:0; pointer-events:none; z-index:4;
        background: radial-gradient(50% 50% at 50% 50%, #fff6 0%, transparent 60%);
        animation: flashPop .7s ease;}}
@@ -77,7 +89,14 @@ html, body, [data-testid="stAppViewContainer"]{{
   100%{{transform:translate(var(--x), var(--y)) scale(1.2); opacity:0}}
 }}
 
-@media (max-width:420px){{ .title{{font-size:26px}} .cups{{grid-template-columns:repeat(4,1fr)}} }}
+@media (max-width:480px){{
+  .title{{ font-size:24px }}
+  .subtitle{{ font-size:13px; margin-bottom:8px }}
+  .container{{ max-width: 420px }}
+  .cups{{ grid-template-columns: repeat(5, 1fr); gap: 6px; }}
+  .cup{{ padding:4px; min-height:50px; }}
+  .cup img{{ max-height:52px; }}
+}}
 </style>
 <div class="sky">{stars_html}</div>
 """, unsafe_allow_html=True)
@@ -152,7 +171,8 @@ if "cup_ml"  not in st.session_state: st.session_state.cup_ml  = cup_default
 if "shown_indices" not in st.session_state: st.session_state.shown_indices = shown_indices_file
 if "pool_indices"  not in st.session_state: st.session_state.pool_indices  = pool_indices_file
 if "do_effect"     not in st.session_state: st.session_state.do_effect = False
-if "fx_nonce"      not in st.session_state: st.session_state.fx_nonce  = 0  # muda a cada clique p/ forçar execução do som
+if "fx_nonce"      not in st.session_state: st.session_state.fx_nonce  = 0      # muda a cada clique
+if "sound_ok"      not in st.session_state: st.session_state.sound_ok  = False  # iOS: habilitado após toque
 
 # sanity se número de imagens mudou
 max_idx = len(images) - 1
@@ -168,6 +188,29 @@ if not st.session_state.pool_indices and images:
 st.markdown("<div class='container'><div class='card'>", unsafe_allow_html=True)
 st.markdown("<div class='title'>💧 Já bebeu água hoje, minha princesinha?</div>", unsafe_allow_html=True)
 st.markdown("<div class='subtitle'>Clica no botão para ganhar um sticker fofinho 🧋✨</div>", unsafe_allow_html=True)
+
+# Botão para habilitar som no iPhone (um toque só por sessão)
+col_enable, _ = st.columns([1,3])
+with col_enable:
+    if not st.session_state.sound_ok and st.button("🔊 Ativar som no iPhone"):
+        st.session_state.sound_ok = True
+        # beep curtinho para destravar áudio no iOS
+        st.components.v1.html("""
+        <script>
+        (function(){
+          const AC = window.AudioContext || window.webkitAudioContext;
+          const ctx = new AC(); const now = ctx.currentTime;
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.frequency.value = 440; o.type='sine';
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.exponentialRampToValueAtTime(0.12, now+0.03);
+          g.gain.exponentialRampToValueAtTime(0.0001, now+0.10);
+          o.connect(g).connect(ctx.destination);
+          o.start(now); o.stop(now+0.12);
+        })();
+        </script>
+        """, height=0)
+        st.rerun()
 
 # ================== BOTÕES ==================
 col1, col2 = st.columns(2, gap="small")
@@ -191,7 +234,7 @@ if clicked:
         idx = st.session_state.pool_indices.pop(0)
         st.session_state.shown_indices.append(idx)
         st.session_state.do_effect = True
-        st.session_state.fx_nonce += 1  # garante tocar o som sempre
+        st.session_state.fx_nonce += 1  # garante som/efeito em todo clique
         save_state(
             st.session_state.shown_indices,
             st.session_state.pool_indices,
@@ -245,9 +288,9 @@ st.markdown("<div class='cups'>", unsafe_allow_html=True)
 if not st.session_state.shown_indices:
     st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um? 💕</div>", unsafe_allow_html=True)
 else:
-    cols = st.columns(4)
+    cols = st.columns(5)  # casa bem com mobile (5 por linha)
     for i, idx in enumerate(st.session_state.shown_indices):
-        with cols[i % 4]:
+        with cols[i % 5]:
             if images:
                 st.image(images[idx]["img"], use_container_width=True)
             else:
@@ -255,7 +298,7 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ================== EFEITO YAAAY + SOM (com yay.mp3) ==================
+# ================== EFEITO YAAAY + SOM ==================
 if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
 
@@ -267,36 +310,37 @@ if st.session_state.get("do_effect"):
     )
     st.markdown(f"<div class='flash'></div><div class='burst'>{burst}</div>", unsafe_allow_html=True)
 
-    # componente HTML com nonce único -> reexecuta SEMPRE
     nonce = st.session_state.fx_nonce
 
-    if YAY_B64:  # usa o MP3
+    if YAY_B64 and st.session_state.sound_ok:
+        # usa o MP3 (playsinline pra iOS)
         st.components.v1.html(
             f"""
 <!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body>
-<audio autoplay>
+<audio id="yay" autoplay playsinline>
   <source src="data:audio/mpeg;base64,{YAY_B64}" type="audio/mpeg">
 </audio>
 <script>
-// nonce muda a cada clique -> {nonce}
+// nonce por clique -> {nonce}
+const a = document.getElementById('yay');
+a && a.play && a.play().catch(()=>{{/* se falhar, toque "Ativar som" resolve */}});
 </script>
 </body></html>
             """,
-            height=1,
-            scrolling=False,
+            height=1, scrolling=False
         )
     else:
-        # fallback WebAudio (se yay.mp3 não existir)
+        # fallback WebAudio
         st.components.v1.html(
             f"""
 <!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body><script>
-// nonce muda a cada clique -> {nonce}
+// nonce por clique -> {nonce}
 (function(){{
   const AC = window.AudioContext || window.webkitAudioContext;
   const ctx = new AC(); const now = ctx.currentTime;
-  function beep(f,t,d,type='sine',g=0.15){{
+  function tone(f,t,d,type='sine',g=0.15){{
     const o=ctx.createOscillator(), G=ctx.createGain();
     o.type=type; o.frequency.value=f;
     G.gain.setValueAtTime(0.0001, now+t);
@@ -304,14 +348,14 @@ if st.session_state.get("do_effect"):
     G.gain.exponentialRampToValueAtTime(0.0001, now+t+d);
     o.connect(G).connect(ctx.destination); o.start(now+t); o.stop(now+t+d+0.05);
   }}
-  beep(640,0.00,0.10,'sine',0.18);
-  beep(520,0.10,0.12,'sine',0.16);
-  beep(1200,0.24,0.08,'triangle',0.12);
+  tone(523.25,0.00,0.10,'sine',0.18);
+  tone(659.25,0.06,0.10,'sine',0.16);
+  tone(783.99,0.12,0.12,'sine',0.15);
+  tone(987.77,0.22,0.08,'triangle',0.12);
 }})();
 </script></body></html>
             """,
-            height=1,
-            scrolling=False,
+            height=1, scrolling=False
         )
 
 # ================== SIDEBAR (só configs úteis) ==================
