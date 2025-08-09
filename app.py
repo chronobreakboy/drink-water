@@ -153,6 +153,7 @@ if "shown_indices" not in st.session_state: st.session_state.shown_indices = sho
 if "pool_indices"  not in st.session_state: st.session_state.pool_indices  = pool_indices_file
 if "do_effect"     not in st.session_state: st.session_state.do_effect = False
 if "fx_nonce"      not in st.session_state: st.session_state.fx_nonce  = 0  # muda a cada clique p/ forçar execução do som
+if "sound_ok"      not in st.session_state: st.session_state.sound_ok  = False  # iOS: habilitar som
 
 # sanity se número de imagens mudou
 max_idx = len(images) - 1
@@ -168,6 +169,32 @@ if not st.session_state.pool_indices and images:
 st.markdown("<div class='container'><div class='card'>", unsafe_allow_html=True)
 st.markdown("<div class='title'>💧 Já bebeu água hoje, minha princesinha?</div>", unsafe_allow_html=True)
 st.markdown("<div class='subtitle'>Clica no botão para ganhar um sticker fofinho 🧋✨</div>", unsafe_allow_html=True)
+
+# ---- Botão para habilitar som no iPhone (cria window.YAY e destrava) ----
+col_enable, _ = st.columns([1,3])
+with col_enable:
+    if not st.session_state.sound_ok and st.button("🔊 Ativar som no iPhone"):
+        st.session_state.sound_ok = True
+        src_line = f"const SRC='data:audio/mpeg;base64,{YAY_B64}';" if YAY_B64 else "const SRC=null;"
+        st.components.v1.html(f"""
+        <script>
+        (function(){{
+          {src_line}
+          if (!window.YAY) {{
+            const a = document.createElement('audio');
+            a.setAttribute('playsinline',''); a.setAttribute('preload','auto'); a.volume = 1.0;
+            if (SRC) a.src = SRC;
+            document.body.appendChild(a);
+            window.YAY = a;
+          }}
+          try {{
+            const a = window.YAY; a.muted=false; a.currentTime=0;
+            const p = a.play(); if (p && p.then) p.then(()=>{{a.pause(); a.currentTime=0;}}).catch(()=>{{}});
+          }} catch(e){{}}
+        }})();
+        </script>
+        """, height=0)
+        st.rerun()
 
 # ================== BOTÕES ==================
 col1, col2 = st.columns(2, gap="small")
@@ -185,13 +212,68 @@ btns.forEach(b=>{
 </script>
 """, unsafe_allow_html=True)
 
+# ---- Overlay que toca o som IMEDIATAMENTE e clica o botão real (iPhone) ----
+st.components.v1.html(f"""
+<style>
+#yay-overlay {{
+  position: fixed; left: 0; top: 0; width: 0; height: 0;
+  pointer-events: none; z-index: 9; background: transparent;
+}}
+</style>
+<div id="yay-overlay"></div>
+<script>
+(function(){{
+  const root = document.getElementById('yay-overlay');
+
+  function placeOverlay() {{
+    // acha o botão real
+    const btns = Array.from(parent.document.querySelectorAll('button'));
+    const target = btns.find(b => /um copinho/i.test(b.innerText));
+    if (!target) {{ root.style.pointerEvents='none'; return; }}
+    const r = target.getBoundingClientRect();
+    // posiciona exatamente por cima
+    root.style.left   = r.left + 'px';
+    root.style.top    = r.top  + 'px';
+    root.style.width  = r.width + 'px';
+    root.style.height = r.height + 'px';
+    root.style.pointerEvents = 'auto';
+  }}
+
+  function playYay() {{
+    try {{
+      if (window.YAY) {{
+        window.YAY.currentTime = 0;
+        const p = window.YAY.play();
+        if (p && p.catch) p.catch(()=>{{}});
+      }}
+    }} catch(e) {{}}
+  }}
+
+  root.onclick = function(ev){{
+    ev.preventDefault();
+    playYay();
+    // clica o botão real
+    const btns = Array.from(parent.document.querySelectorAll('button'));
+    const target = btns.find(b => /um copinho/i.test(b.innerText));
+    target && target.click();
+  }};
+
+  // reposiciona quando necessário
+  placeOverlay();
+  window.addEventListener('resize', placeOverlay);
+  window.addEventListener('scroll', placeOverlay, true);
+  setInterval(placeOverlay, 700); // garante ajuste após re-render do Streamlit
+}})();
+</script>
+""", height=0)
+
 # ================== LÓGICA CLIQUES ==================
 if clicked:
     if images and st.session_state.pool_indices:
         idx = st.session_state.pool_indices.pop(0)
         st.session_state.shown_indices.append(idx)
         st.session_state.do_effect = True
-        st.session_state.fx_nonce += 1  # garante tocar o som sempre
+        st.session_state.fx_nonce += 1  # não usamos mais pro som, mas mantém se quiser
         save_state(
             st.session_state.shown_indices,
             st.session_state.pool_indices,
@@ -255,64 +337,16 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ================== EFEITO YAAAY + SOM (com yay.mp3) ==================
+# ================== EFEITO YAAAY (VISUAL) ==================
+# (o som já toca via overlay antes do clique real)
 if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
-
-    # burst visual
     burst = "".join(
         f"<span style='--x:{random.randint(-160,160)}px; --y:{random.randint(-140,140)}px'>"
         f"{random.choice(['✨','💧','🌟','🫧','💖','🎉'])}</span>"
         for _ in range(24)
     )
     st.markdown(f"<div class='flash'></div><div class='burst'>{burst}</div>", unsafe_allow_html=True)
-
-    # componente HTML com nonce único -> reexecuta SEMPRE
-    nonce = st.session_state.fx_nonce
-
-    if YAY_B64:  # usa o MP3
-        st.components.v1.html(
-            f"""
-<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body>
-<audio autoplay>
-  <source src="data:audio/mpeg;base64,{YAY_B64}" type="audio/mpeg">
-</audio>
-<script>
-// nonce muda a cada clique -> {nonce}
-</script>
-</body></html>
-            """,
-            height=1,
-            scrolling=False,
-        )
-    else:
-        # fallback WebAudio (se yay.mp3 não existir)
-        st.components.v1.html(
-            f"""
-<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body><script>
-// nonce muda a cada clique -> {nonce}
-(function(){{
-  const AC = window.AudioContext || window.webkitAudioContext;
-  const ctx = new AC(); const now = ctx.currentTime;
-  function beep(f,t,d,type='sine',g=0.15){{
-    const o=ctx.createOscillator(), G=ctx.createGain();
-    o.type=type; o.frequency.value=f;
-    G.gain.setValueAtTime(0.0001, now+t);
-    G.gain.exponentialRampToValueAtTime(g, now+t+0.03);
-    G.gain.exponentialRampToValueAtTime(0.0001, now+t+d);
-    o.connect(G).connect(ctx.destination); o.start(now+t); o.stop(now+t+d+0.05);
-  }}
-  beep(640,0.00,0.10,'sine',0.18);
-  beep(520,0.10,0.12,'sine',0.16);
-  beep(1200,0.24,0.08,'triangle',0.12);
-}})();
-</script></body></html>
-            """,
-            height=1,
-            scrolling=False,
-        )
 
 # ================== SIDEBAR (só configs úteis) ==================
 with st.sidebar:
