@@ -8,19 +8,19 @@ st.set_page_config(page_title="Beba Água 🌸", page_icon="💧", layout="cente
 
 # ================== TEMA / FUNDO CINTILANTE ==================
 STAR_COUNT = 28
-random.seed(42)  # fundo
+random.seed(42)  # só para o fundo
 stars_html = "\n".join(
     f"<div class='star' style='left:{random.randint(0,100)}%; top:{random.randint(0,100)}%; "
     f"animation-delay:{random.uniform(0,4):.2f}s; animation-duration:{random.uniform(5,10):.2f}s'></div>"
     for _ in range(STAR_COUNT)
 )
+
 st.markdown(f"""
 <style>
 :root{{
   --bg-1:#e9c6f5; --bg-2:#ffc9da; --bg-3:#ffe3b8;
   --card:#fff7de; --stroke:#f2d278;
   --text:#5b402f; --muted:#6f5b51;
-  --accent:#ffb1c4; --accent2:#ffd59f;
   --btn-grad: linear-gradient(180deg,#ffd0e0,#ffb1c4);
   --btn-grad-2: linear-gradient(180deg,#ffe1b8,#ffd59f);
   --shadow:0 14px 36px rgba(255,140,180,.30);
@@ -32,6 +32,7 @@ html, body, [data-testid="stAppViewContainer"]{{
     linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
   color:var(--text);
 }}
+/* estrelas animadas */
 .sky{{position:fixed; inset:0; pointer-events:none; z-index:0; animation: skyShift 32s linear infinite;}}
 @keyframes skyShift{{0%{{transform:translateY(0)}}50%{{transform:translateY(8px)}}100%{{transform:translateY(0)}}}}
 .star{{position:fixed; width:6px; height:6px; border-radius:50%;
@@ -47,10 +48,9 @@ html, body, [data-testid="stAppViewContainer"]{{
 
 .stButton>button{{width:100%; padding:16px 18px; font-weight:900; border-radius:var(--radius); border:0; box-shadow:var(--shadow);
                   letter-spacing:.2px; transform: translateY(0); transition: transform .05s ease, filter .15s ease;}}
-/* botão principal fofinho */
+/* fofura dos botões */
 .btn-primary{{ background: var(--btn-grad); color:#5a2a37; }}
 .btn-primary:hover{{ filter: brightness(1.05); transform: translateY(-1px); }}
-/* botão secundário fofinho */
 .btn-sec{{ background: var(--btn-grad-2); color:#583d26 !important; }}
 .btn-sec:hover{{ filter: brightness(1.05); transform: translateY(-1px); }}
 
@@ -67,12 +67,11 @@ html, body, [data-testid="stAppViewContainer"]{{
 .small{{font-size:12px; text-align:center; color:var(--muted); margin-top:6px}}
 .msg{{text-align:center; font-weight:800; color:#6e4d00; margin-top:8px}}
 
-/* flash cintilante + burst de emojis */
+/* flash + burst */
 .flash{{position:fixed; inset:0; pointer-events:none; z-index:4;
        background: radial-gradient(50% 50% at 50% 50%, #fff6 0%, transparent 60%);
        animation: flashPop .7s ease;}}
 @keyframes flashPop{{0%{{opacity:0}}15%{{opacity:1}}100%{{opacity:0}}}}
-
 .burst{{position:fixed; left:50%; top:46%; width:0; height:0; pointer-events:none; z-index:5}}
 .burst span{{position:absolute; font-size:22px; animation: fly .8s ease-out forwards; opacity:0}}
 @keyframes fly{{
@@ -98,13 +97,13 @@ def load_images(folder="pixel"):
     for p in files:
         try:
             im = Image.open(p).convert("RGBA")
-            im.thumbnail((512, 512))  # acelera no mobile
+            im.thumbnail((512, 512))  # acelera no mobile; remova se quiser original
             imgs.append({"path": str(p), "img": im})
         except Exception:
             pass
     return imgs
 
-images = load_images("pixel")
+images = load_images("pixel")  # coloque seus PNGs aqui
 
 # ================== PERSISTÊNCIA EM ARQUIVO (por dia) ==================
 DATA_DIR = Path("data")
@@ -145,6 +144,7 @@ if "cup_ml"  not in st.session_state: st.session_state.cup_ml  = cup_default
 if "shown_indices" not in st.session_state: st.session_state.shown_indices = shown_indices_file
 if "pool_indices"  not in st.session_state: st.session_state.pool_indices  = pool_indices_file
 if "do_effect"     not in st.session_state: st.session_state.do_effect = False
+if "fx_key"        not in st.session_state: st.session_state.fx_key = 0  # força efeito a tocar sempre
 
 # sanity se número de imagens mudou
 max_idx = len(images) - 1
@@ -161,15 +161,12 @@ st.markdown("<div class='container'><div class='card'>", unsafe_allow_html=True)
 st.markdown("<div class='title'>💧 Já bebeu água hoje, minha princesinha?</div>", unsafe_allow_html=True)
 st.markdown("<div class='subtitle'>Clica no botão para ganhar um sticker fofinho 🧋✨</div>", unsafe_allow_html=True)
 
-# ================== BOTÕES (super fofos) ==================
+# ================== BOTÕES ==================
 col1, col2 = st.columns(2, gap="small")
-with col1:
-    # botão principal
-    clicked = st.button("➕  um copinho", use_container_width=True, key="add")
-with col2:
-    undo = st.button("↩️  Desfazer", use_container_width=True, key="undo")
+clicked = col1.button("➕  um copinho", use_container_width=True, key="add")
+undo    = col2.button("↩️  Desfazer",   use_container_width=True, key="undo")
 
-# aplica classes fofas aos botões
+# aplicar classes fofas via JS
 st.markdown("""
 <script>
 const btns = Array.from(parent.document.querySelectorAll('button'));
@@ -180,24 +177,27 @@ btns.forEach(b=>{
 </script>
 """, unsafe_allow_html=True)
 
-# ================== LÓGICA DOS BOTÕES ==================
+# ================== LÓGICA CLIQUES ==================
 if clicked:
     if images and st.session_state.pool_indices:
         idx = st.session_state.pool_indices.pop(0)
         st.session_state.shown_indices.append(idx)
-        st.session_state.do_effect = True  # dispara som + burst
+        st.session_state.do_effect = True
+        st.session_state.fx_key += 1  # chave única pra tocar som/efeito SEMPRE
         save_state(
             st.session_state.shown_indices,
             st.session_state.pool_indices,
             st.session_state.goal_ml,
             st.session_state.cup_ml,
         )
+        # balões se bateu a meta
+        if len(st.session_state.shown_indices) * st.session_state.cup_ml >= st.session_state.goal_ml:
+            st.balloons()
     st.rerun()
 
 if undo:
     if st.session_state.shown_indices:
         st.session_state.shown_indices.pop()
-        # reconstrói pool com os que ainda não foram mostrados
         used = set(st.session_state.shown_indices)
         st.session_state.pool_indices = [i for i in range(len(images)) if i not in used]
         random.shuffle(st.session_state.pool_indices)
@@ -209,11 +209,12 @@ if undo:
         )
     st.rerun()
 
-# ================== PROGRESSO + MENSAGENS ==================
+# ================== PROGRESSO + MENSAGEM ==================
 goal_ml = st.session_state.goal_ml
 cup_ml  = st.session_state.cup_ml
 total   = len(st.session_state.shown_indices) * cup_ml
 pct     = min(int(total / goal_ml * 100), 100)
+
 st.markdown(f"""
 <div class="progress-wrap">
   <div class="progress-label">{total} / {goal_ml} ml ({pct}%) — cada copinho: {cup_ml} ml</div>
@@ -247,36 +248,72 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ================== EFEITO FOFO (som + burst) ==================
-if st.session_state.do_effect:
+# ================== EFEITO YAAAY + SOM (toda vez) ==================
+if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
-    # burst de emojis
+
+    # burst visual
     burst = "".join(
-        f"<span style='--x:{random.randint(-140,140)}px; --y:{random.randint(-120,120)}px'>"
-        f"{random.choice(['✨','💧','🌟','🫧','💖'])}</span>"
-        for _ in range(18)
+        f"<span style='--x:{random.randint(-160,160)}px; --y:{random.randint(-140,140)}px'>"
+        f"{random.choice(['✨','💧','🌟','🫧','💖','🎉'])}</span>"
+        for _ in range(24)
     )
     st.markdown(f"<div class='flash'></div><div class='burst'>{burst}</div>", unsafe_allow_html=True)
-    # sonzinho no clique (WebAudio, sem arquivo externo)
-    st.components.v1.html("""
-    <script>
-    (function(){
-      const ctx = new (window.AudioContext||window.webkitAudioContext)();
-      const now = ctx.currentTime;
-      function tone(freq, t0, dur, gain=0.15){
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = 'sine';
-        o.frequency.value = freq;
-        g.gain.setValueAtTime(0, now+t0);
-        g.gain.linearRampToValueAtTime(gain, now+t0+0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, now+t0+dur);
-        o.connect(g).connect(ctx.destination);
-        o.start(now+t0); o.stop(now+t0+dur+0.05);
-      }
-      // dois "glups" rapidinhos
-      tone(650, 0.00, 0.10);
-      tone(520, 0.10, 0.12);
-    })();
-    </script>
-    """, height=0)
+
+    # áudio + label "YAAAY" — chave única por clique
+    st.components.v1.html(
+        f"""
+<!DOCTYPE html><html><head><meta charset="utf-8" />
+<style>
+.yay {{
+  position: fixed; left: 50%; top: 38%; transform: translate(-50%,-50%);
+  font: 900 42px/1.1 "Comic Sans MS", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #6e4d00; text-shadow: 0 2px 0 #fff6, 0 6px 20px rgba(255,140,180,.35);
+  animation: popYay .9s ease-out forwards; z-index: 6; pointer-events:none;
+}}
+@keyframes popYay {{
+  0% {{ opacity: 0; transform: translate(-50%,-50%) scale(.7); }}
+  30%{{ opacity: 1; transform: translate(-50%,-50%) scale(1.08); }}
+  100%{{ opacity: 0; transform: translate(-50%,-56%) scale(1.00); }}
+}}
+</style></head><body>
+<div class="yay">YAAAY! 💖💧</div>
+<script>
+(function(){{
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC(); const now = ctx.currentTime;
+  function beep(f,t,d,type='sine',g=0.15){{
+    const o=ctx.createOscillator(), G=ctx.createGain(); o.type=type; o.frequency.value=f;
+    G.gain.setValueAtTime(0.0001, now+t);
+    G.gain.exponentialRampToValueAtTime(g, now+t+0.03);
+    G.gain.exponentialRampToValueAtTime(0.0001, now+t+d);
+    o.connect(G).connect(ctx.destination); o.start(now+t); o.stop(now+t+d+0.05);
+  }}
+  // glup glup + tlin de fada
+  beep(640,0.00,0.10,'sine',0.18);
+  beep(520,0.10,0.12,'sine',0.16);
+  beep(1200,0.24,0.08,'triangle',0.12);
+}})();
+</script>
+</body></html>
+        """,
+        height=0,
+        key=f"yay-{st.session_state.fx_key}"
+    )
+
+# ================== SIDEBAR (só configs úteis) ==================
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    new_goal = st.number_input("Meta diária (ml)", 200, 10000, st.session_state.goal_ml, 100)
+    new_cup  = st.number_input("Tamanho do copo (ml)", 50, 1000, st.session_state.cup_ml, 50)
+    if new_goal != st.session_state.goal_ml or new_cup != st.session_state.cup_ml:
+        st.session_state.goal_ml = new_goal
+        st.session_state.cup_ml  = new_cup
+        save_state(st.session_state.shown_indices, st.session_state.pool_indices, new_goal, new_cup)
+    st.caption("As imagens de hoje ficam fixas. Amanhã sorteia outra ordem automaticamente. 💕")
+    if st.button("🔄 Resetar dia (manual)"):
+        st.session_state.shown_indices = []
+        st.session_state.pool_indices  = list(range(len(images)))
+        random.shuffle(st.session_state.pool_indices)
+        save_state(st.session_state.shown_indices, st.session_state.pool_indices, st.session_state.goal_ml, st.session_state.cup_ml)
+        st.rerun()
