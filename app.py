@@ -2,7 +2,7 @@ import streamlit as st
 from datetime import date
 from pathlib import Path
 from PIL import Image
-import json, random
+import json, random, base64
 
 st.set_page_config(page_title="Beba Água 🌸", page_icon="💧", layout="centered")
 
@@ -32,7 +32,6 @@ html, body, [data-testid="stAppViewContainer"]{{
     linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
   color:var(--text);
 }}
-/* estrelas animadas */
 .sky{{position:fixed; inset:0; pointer-events:none; z-index:0; animation: skyShift 32s linear infinite;}}
 @keyframes skyShift{{0%{{transform:translateY(0)}}50%{{transform:translateY(8px)}}100%{{transform:translateY(0)}}}}
 .star{{position:fixed; width:6px; height:6px; border-radius:50%;
@@ -48,7 +47,6 @@ html, body, [data-testid="stAppViewContainer"]{{
 
 .stButton>button{{width:100%; padding:16px 18px; font-weight:900; border-radius:var(--radius); border:0; box-shadow:var(--shadow);
                   letter-spacing:.2px; transform: translateY(0); transition: transform .05s ease, filter .15s ease;}}
-/* fofura dos botões */
 .btn-primary{{ background: var(--btn-grad); color:#5a2a37; }}
 .btn-primary:hover{{ filter: brightness(1.05); transform: translateY(-1px); }}
 .btn-sec{{ background: var(--btn-grad-2); color:#583d26 !important; }}
@@ -67,7 +65,6 @@ html, body, [data-testid="stAppViewContainer"]{{
 .small{{font-size:12px; text-align:center; color:var(--muted); margin-top:6px}}
 .msg{{text-align:center; font-weight:800; color:#6e4d00; margin-top:8px}}
 
-/* flash + burst */
 .flash{{position:fixed; inset:0; pointer-events:none; z-index:4;
        background: radial-gradient(50% 50% at 50% 50%, #fff6 0%, transparent 60%);
        animation: flashPop .7s ease;}}
@@ -97,13 +94,24 @@ def load_images(folder="pixel"):
     for p in files:
         try:
             im = Image.open(p).convert("RGBA")
-            im.thumbnail((512, 512))  # acelera no mobile; remova se quiser original
+            im.thumbnail((512, 512))  # acelera no mobile
             imgs.append({"path": str(p), "img": im})
         except Exception:
             pass
     return imgs
 
-images = load_images("pixel")  # coloque seus PNGs aqui
+images = load_images("pixel")
+
+# ================== CARREGAR yay.mp3 (base64) ==================
+@st.cache_resource
+def load_yay_b64(path="yay.mp3"):
+    p = Path(path)
+    if not p.exists():
+        return None
+    b = p.read_bytes()
+    return base64.b64encode(b).decode("ascii")
+
+YAY_B64 = load_yay_b64("yay.mp3")
 
 # ================== PERSISTÊNCIA EM ARQUIVO (por dia) ==================
 DATA_DIR = Path("data")
@@ -144,7 +152,7 @@ if "cup_ml"  not in st.session_state: st.session_state.cup_ml  = cup_default
 if "shown_indices" not in st.session_state: st.session_state.shown_indices = shown_indices_file
 if "pool_indices"  not in st.session_state: st.session_state.pool_indices  = pool_indices_file
 if "do_effect"     not in st.session_state: st.session_state.do_effect = False
-if "fx_key"        not in st.session_state: st.session_state.fx_key = 0  # força efeito a tocar sempre
+if "fx_nonce"      not in st.session_state: st.session_state.fx_nonce  = 0  # muda a cada clique p/ forçar execução do som
 
 # sanity se número de imagens mudou
 max_idx = len(images) - 1
@@ -183,14 +191,13 @@ if clicked:
         idx = st.session_state.pool_indices.pop(0)
         st.session_state.shown_indices.append(idx)
         st.session_state.do_effect = True
-        st.session_state.fx_key += 1  # chave única pra tocar som/efeito SEMPRE
+        st.session_state.fx_nonce += 1  # garante tocar o som sempre
         save_state(
             st.session_state.shown_indices,
             st.session_state.pool_indices,
             st.session_state.goal_ml,
             st.session_state.cup_ml,
         )
-        # balões se bateu a meta
         if len(st.session_state.shown_indices) * st.session_state.cup_ml >= st.session_state.goal_ml:
             st.balloons()
     st.rerun()
@@ -248,7 +255,7 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ================== EFEITO YAAAY + SOM (toda vez) ==================
+# ================== EFEITO YAAAY + SOM (com yay.mp3) ==================
 if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
 
@@ -260,48 +267,52 @@ if st.session_state.get("do_effect"):
     )
     st.markdown(f"<div class='flash'></div><div class='burst'>{burst}</div>", unsafe_allow_html=True)
 
-    # áudio + label "YAAAY" — sem `key`, para Streamlit que não suporta
-    st.components.v1.html(
-        """
-<!DOCTYPE html><html><head><meta charset="utf-8" />
-<style>
-.yay {
-  position: fixed; left: 50%; top: 38%; transform: translate(-50%,-50%);
-  font: 900 42px/1.1 "Comic Sans MS", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: #6e4d00; text-shadow: 0 2px 0 #fff6, 0 6px 20px rgba(255,140,180,.35);
-  animation: popYay .9s ease-out forwards; z-index: 6; pointer-events:none;
-}
-@keyframes popYay {
-  0% { opacity: 0; transform: translate(-50%,-50%) scale(.7); }
-  30%{ opacity: 1; transform: translate(-50%,-50%) scale(1.08); }
-  100%{ opacity: 0; transform: translate(-50%,-56%) scale(1.00); }
-}
-</style></head><body>
-<div class="yay">YAAAY! 💖💧</div>
+    # componente HTML com nonce único -> reexecuta SEMPRE
+    nonce = st.session_state.fx_nonce
+
+    if YAY_B64:  # usa o MP3
+        st.components.v1.html(
+            f"""
+<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body>
+<audio autoplay>
+  <source src="data:audio/mpeg;base64,{YAY_B64}" type="audio/mpeg">
+</audio>
 <script>
-(function(){
+// nonce muda a cada clique -> {nonce}
+</script>
+</body></html>
+            """,
+            height=1,
+            scrolling=False,
+        )
+    else:
+        # fallback WebAudio (se yay.mp3 não existir)
+        st.components.v1.html(
+            f"""
+<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body><script>
+// nonce muda a cada clique -> {nonce}
+(function(){{
   const AC = window.AudioContext || window.webkitAudioContext;
   const ctx = new AC(); const now = ctx.currentTime;
-  function beep(f,t,d,type='sine',g=0.15){
+  function beep(f,t,d,type='sine',g=0.15){{
     const o=ctx.createOscillator(), G=ctx.createGain();
     o.type=type; o.frequency.value=f;
     G.gain.setValueAtTime(0.0001, now+t);
     G.gain.exponentialRampToValueAtTime(g, now+t+0.03);
     G.gain.exponentialRampToValueAtTime(0.0001, now+t+d);
     o.connect(G).connect(ctx.destination); o.start(now+t); o.stop(now+t+d+0.05);
-  }
-  // glup glup + tlin de fada
+  }}
   beep(640,0.00,0.10,'sine',0.18);
   beep(520,0.10,0.12,'sine',0.16);
   beep(1200,0.24,0.08,'triangle',0.12);
-})();
-</script>
-</body></html>
-        """,
-        height=1,  # altura mínima
-        scrolling=False
-    )
-
+}})();
+</script></body></html>
+            """,
+            height=1,
+            scrolling=False,
+        )
 
 # ================== SIDEBAR (só configs úteis) ==================
 with st.sidebar:
