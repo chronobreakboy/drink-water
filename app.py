@@ -2,19 +2,18 @@ import streamlit as st
 from datetime import date
 from pathlib import Path
 from PIL import Image
-import random, time
+import json, random
 
 st.set_page_config(page_title="Beba Água 🌸", page_icon="💧", layout="centered")
 
-# ================== TEMA ROSINHA + ESTRELAS + EFEITOS ==================
+# ================== TEMA / FUNDO CINTILANTE ==================
 STAR_COUNT = 28
-random.seed(42)
+random.seed(42)  # só pro fundo
 stars_html = "\n".join(
     f"<div class='star' style='left:{random.randint(0,100)}%; top:{random.randint(0,100)}%; "
     f"animation-delay:{random.uniform(0,4):.2f}s; animation-duration:{random.uniform(5,10):.2f}s'></div>"
     for _ in range(STAR_COUNT)
 )
-
 st.markdown(f"""
 <style>
 :root{{
@@ -31,7 +30,6 @@ html, body, [data-testid="stAppViewContainer"]{{
     linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
   color:var(--text);
 }}
-/* estrelas animadas no fundo */
 .sky{{position:fixed; inset:0; pointer-events:none; z-index:0;
      animation: skyShift 32s linear infinite;}}
 @keyframes skyShift{{0%{{transform:translateY(0)}}50%{{transform:translateY(8px)}}100%{{transform:translateY(0)}}}}
@@ -62,7 +60,6 @@ button[kind="secondary"]{{background:var(--accent2); color:#583d26 !important}}
 .small{{font-size:12px; text-align:center; color:var(--muted); margin-top:6px}}
 .msg{{text-align:center; font-weight:700; color:#6e4d00; margin-top:6px}}
 
-/* flash cintilante no clique */
 .flash{{position:fixed; inset:0; pointer-events:none; z-index:3;
        background: radial-gradient(circle at 50% 50%, #fff5 0%, transparent 60%);
        animation: flashPop .7s ease;}}
@@ -73,83 +70,82 @@ button[kind="secondary"]{{background:var(--accent2); color:#583d26 !important}}
 <div class="sky">{stars_html}</div>
 """, unsafe_allow_html=True)
 
-# ================== CARREGAR IMAGENS DA PASTA pixel/ ==================
+# ================== CARREGAR PNGs DE /pixel ==================
 @st.cache_resource
-def carregar_stickers(pasta: str = "pixel"):
-    base = Path(pasta)
+def load_images(folder="pixel"):
+    base = Path(folder)
     if not base.exists():
         return []
     exts = {".png", ".jpg", ".jpeg", ".webp"}
-    arquivos = sorted([p for p in base.iterdir() if p.suffix.lower() in exts])
+    files = sorted([p for p in base.iterdir() if p.suffix.lower() in exts])
     imgs = []
-    for p in arquivos:
+    for p in files:
         try:
-            img = Image.open(p).convert("RGBA")
-            # redimensiona suave pra acelerar no mobile (comente se quiser original)
-            img.thumbnail((512, 512))
-            imgs.append(img)
+            im = Image.open(p).convert("RGBA")
+            im.thumbnail((512, 512))  # acelera no mobile; remova se quiser original
+            imgs.append({"path": str(p), "img": im})
         except Exception:
             pass
     return imgs
 
-stickers = carregar_stickers("pixel")  # coloque seus PNGs em /pixel
+images = load_images("pixel")  # coloque seus PNGs em /pixel
 
-# ================== ESTADO PADRÃO (meta 3500, copo 350) ==================
-today = str(date.today())
-if "goal_ml" not in st.session_state: st.session_state.goal_ml = 3500
-if "cup_ml"  not in st.session_state: st.session_state.cup_ml  = 350
-if "counts"  not in st.session_state: st.session_state.counts  = {}
-if "day_key" not in st.session_state: st.session_state.day_key = today
-if "flash"   not in st.session_state: st.session_state.flash   = False
+# ================== PERSISTÊNCIA EM ARQUIVO (por dia) ==================
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(exist_ok=True)
+today = date.today().isoformat()
+state_path = DATA_DIR / f"state_{today}.json"
 
-# lista de índices exibidos HOJE (o que já está na tela não muda)
-if "shown_indices" not in st.session_state:
-    st.session_state.shown_indices = []  # ordem de exibição de hoje
+def save_state(shown_indices, pool_indices, goal_ml, cup_ml):
+    payload = {
+        "shown_indices": shown_indices,
+        "pool_indices": pool_indices,
+        "goal_ml": goal_ml,
+        "cup_ml": cup_ml,
+    }
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
 
-# pool embaralhado de índices para consumir HOJE (garante “diferente a cada clique”)
-if "pool_indices" not in st.session_state:
-    st.session_state.pool_indices = list(range(len(stickers)))
-    random.shuffle(st.session_state.pool_indices)
+def load_state():
+    if state_path.exists():
+        try:
+            d = json.loads(state_path.read_text(encoding="utf-8"))
+            return (
+                d.get("shown_indices", []),
+                d.get("pool_indices", []),
+                d.get("goal_ml", 3500),
+                d.get("cup_ml", 350),
+            )
+        except Exception:
+            pass
+    # inicial: embaralha uma ordem para hoje
+    pool = list(range(len(images)))
+    random.shuffle(pool)
+    return [], pool, 3500, 350
 
-# troca de dia? reseta tudo pra hoje começar do zero
-if st.session_state.day_key != today:
-    st.session_state.day_key = today
-    st.session_state.counts[today] = 0
-    st.session_state.shown_indices = []
-    st.session_state.pool_indices = list(range(len(stickers)))
-    random.shuffle(st.session_state.pool_indices)
+# carrega ou cria estado de hoje (fora do session_state pra sobreviver a refresh)
+shown_indices_file, pool_indices_file, goal_default, cup_default = load_state()
 
-# count do dia atual é o tamanho do que já mostramos
-st.session_state.counts.setdefault(today, 0)
-st.session_state.counts[today] = len(st.session_state.shown_indices)
+# ================== ESTADO EM SESSÃO (UI) ==================
+# meta e copo com defaults vindos do arquivo
+if "goal_ml" not in st.session_state: st.session_state.goal_ml = goal_default
+if "cup_ml"  not in st.session_state: st.session_state.cup_ml  = cup_default
+if "shown_indices" not in st.session_state: st.session_state.shown_indices = shown_indices_file
+if "pool_indices"  not in st.session_state: st.session_state.pool_indices  = pool_indices_file
+if "flash"         not in st.session_state: st.session_state.flash = False
 
-goal_ml = st.session_state.goal_ml
-cup_ml  = st.session_state.cup_ml
-count   = st.session_state.counts[today]
-total   = count * cup_ml
-pct     = min(int(total / goal_ml * 100), 100)
+# garante consistência caso número de imagens mude
+max_idx = len(images) - 1
+st.session_state.shown_indices = [i for i in st.session_state.shown_indices if 0 <= i <= max_idx]
+st.session_state.pool_indices  = [i for i in st.session_state.pool_indices  if 0 <= i <= max_idx]
+if not st.session_state.pool_indices and images:
+    # reembaralha as que ainda não foram mostradas hoje (se todas já foram, permite repetir)
+    remaining = [i for i in range(len(images)) if i not in st.session_state.shown_indices]
+    if not remaining:
+        remaining = list(range(len(images)))
+    random.shuffle(remaining)
+    st.session_state.pool_indices = remaining
 
-# ================== FUNÇÕES ==================
-def incentivo(p):
-    if p == 0:   return "Começa com um golinho? 🥺👉👈"
-    if p < 20:   return "Primeiro passo dado! 💖"
-    if p < 40:   return "Good girl! Segue no foco ✨"
-    if p < 60:   return "Metade do copão chegando! Orgulho 🥹"
-    if p < 80:   return "Quase lá! Só mais uns golinhos 😘"
-    if p < 100:  return "Reta final, você consegue! 🏁💪"
-    return "META BATIDA! Princesinha hidratadaaa! 🥳💦"
-
-def proximo_indice_para_hoje():
-    """Puxa o próximo índice do pool embaralhado; se acabar, reembaralha para permitir mais cliques sem repetir até esgotar novamente."""
-    if not stickers:
-        return None
-    if not st.session_state.pool_indices:
-        # todas já usadas hoje; reembaralha pra permitir continuar (agora pode repetir)
-        st.session_state.pool_indices = list(range(len(stickers)))
-        random.shuffle(st.session_state.pool_indices)
-    return st.session_state.pool_indices.pop(0)
-
-# ================== CABEÇALHO / CARD ==================
+# ================== CABEÇALHO ==================
 st.markdown("<div class='container'><div class='card'>", unsafe_allow_html=True)
 st.markdown("<h1 class='title'>💧 Já bebeu água hoje, minha princesinha?</h1>", unsafe_allow_html=True)
 st.markdown("<div class='subtitle'>Clica no botão pra ganhar um copinho fofo 🥤✨</div>", unsafe_allow_html=True)
@@ -158,25 +154,49 @@ st.markdown("<div class='subtitle'>Clica no botão pra ganhar um copinho fofo �
 col1, col2 = st.columns(2, gap="small")
 with col1:
     if st.button("➕ um copinho", use_container_width=True):
-        idx = proximo_indice_para_hoje()
-        if idx is not None:
-            st.session_state.shown_indices.append(idx)  # adiciona novo “copo” com imagem diferente
-            st.session_state.flash = True               # flash cintilante
-        # balões se bateu a meta
-        if (len(st.session_state.shown_indices) * cup_ml) >= goal_ml:
-            st.balloons()
+        if images:
+            # pega próximo índice do pool (sem repetir até esgotar)
+            idx = st.session_state.pool_indices.pop(0)
+            st.session_state.shown_indices.append(idx)
+            st.session_state.flash = True
+            # salva no arquivo pra persistir no refresh
+            save_state(
+                st.session_state.shown_indices,
+                st.session_state.pool_indices,
+                st.session_state.goal_ml,
+                st.session_state.cup_ml,
+            )
+            # balões se bateu meta
+            if len(st.session_state.shown_indices) * st.session_state.cup_ml >= st.session_state.goal_ml:
+                st.balloons()
         st.rerun()
-
 with col2:
     if st.button("↩️ Desfazer", use_container_width=True):
         if st.session_state.shown_indices:
-            st.session_state.shown_indices.pop()  # remove o último “copo”
+            st.session_state.shown_indices.pop()
+            # devolve um índice ao início do pool (pra não perder a ordem)
+            if images:
+                # se já mostramos algo, o "desfeito" volta pra frente do pool
+                last = st.session_state.shown_indices[-1] if st.session_state.shown_indices else None
+                # simples: apenas reponho um qualquer válido
+                used = set(st.session_state.shown_indices)
+                candidates = [i for i in range(len(images)) if i not in used]
+                if candidates:
+                    st.session_state.pool_indices = candidates + st.session_state.pool_indices
+            save_state(
+                st.session_state.shown_indices,
+                st.session_state.pool_indices,
+                st.session_state.goal_ml,
+                st.session_state.cup_ml,
+            )
             st.session_state.flash = True
             st.rerun()
 
-# ================== PROGRESSO + MENSAGEM ==================
-total = len(st.session_state.shown_indices) * cup_ml
-pct   = min(int(total / goal_ml * 100), 100)
+# ================== PROGRESSO ==================
+goal_ml = st.session_state.goal_ml
+cup_ml  = st.session_state.cup_ml
+total   = len(st.session_state.shown_indices) * cup_ml
+pct     = min(int(total / goal_ml * 100), 100)
 st.markdown(f"""
 <div class="progress-wrap">
   <div class="progress-label">{total} / {goal_ml} ml ({pct}%) — cada copinho: {cup_ml} ml</div>
@@ -184,9 +204,18 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ================== MENSAGEM MOTIVACIONAL ==================
+def incentivo(p):
+    if p == 0:   return "Começa com um golinho? 🥺👉👈"
+    if p < 20:   return "Primeiro passo dado! 💖"
+    if p < 40:   return "Good girl! Segue no foco ✨"
+    if p < 60:   return "Metade do copão chegando! Orgulho 🥹"
+    if p < 80:   return "Quase lá! Só mais uns golinhos 😘"
+    if p < 100:  return "Reta final, você consegue! 🏁💪"
+    return "META BATIDA! Princesinha hidratadaaa! 🥳💦"
 st.markdown(f"<div class='msg'>{incentivo(pct)}</div>", unsafe_allow_html=True)
 
-# ================== RENDER COPINHOS DE HOJE (permanecem) ==================
+# ================== GRID DE COPINHOS (IMAGENS QUE FICAM) ==================
 st.markdown("<div class='cups'>", unsafe_allow_html=True)
 if not st.session_state.shown_indices:
     st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um? 💕</div>", unsafe_allow_html=True)
@@ -194,26 +223,37 @@ else:
     cols = st.columns(4)
     for i, idx in enumerate(st.session_state.shown_indices):
         with cols[i % 4]:
-            if stickers:
-                st.image(stickers[idx], use_container_width=True)
+            if images:
+                st.image(images[idx]["img"], use_container_width=True)
             else:
-                # fallback se não houver imagens em /pixel
                 st.markdown("<div class='cup'>🥤</div>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div></div>", unsafe_allow_html=True)
 
-st.markdown("</div></div>", unsafe_allow_html=True)  # fecha card/container
-
-# ================== FLASH NO CLIQUE ==================
+# ================== FLASH CINTILANTE ==================
 if st.session_state.flash:
     st.session_state.flash = False
     st.markdown("<div class='flash'></div>", unsafe_allow_html=True)
 
-# ================== SIDEBAR (config) ==================
+# ================== SIDEBAR (só configs úteis) ==================
 with st.sidebar:
     st.header("⚙️ Configurações")
-    st.session_state.goal_ml = st.number_input("Meta diária (ml)", 200, 10000, st.session_state.goal_ml, 100)
-    st.session_state.cup_ml  = st.number_input("Tamanho do copo (ml)", 50, 1000, st.session_state.cup_ml, 50)
-    st.caption("As imagens ficam fixas durante o dia. No dia seguinte, começa outra ordem aleatória 💕")
+    new_goal = st.number_input("Meta diária (ml)", 200, 10000, goal_ml, 100)
+    new_cup  = st.number_input("Tamanho do copo (ml)", 50, 1000, cup_ml, 50)
+    if new_goal != goal_ml or new_cup != cup_ml:
+        st.session_state.goal_ml = new_goal
+        st.session_state.cup_ml  = new_cup
+        save_state(
+            st.session_state.shown_indices,
+            st.session_state.pool_indices,
+            st.session_state.goal_ml,
+            st.session_state.cup_ml,
+        )
+    st.caption("As imagens de hoje ficam fixas. Amanhã sorteia outra ordem automaticamente. 💕")
     if st.button("🔄 Resetar dia (manual)"):
-        st.session_state.day_key = ""  # força reset no próximo rerun
+        # esvazia estado de hoje e salva
+        st.session_state.shown_indices = []
+        st.session_state.pool_indices  = list(range(len(images)))
+        random.shuffle(st.session_state.pool_indices)
+        save_state(st.session_state.shown_indices, st.session_state.pool_indices, st.session_state.goal_ml, st.session_state.cup_ml)
         st.rerun()
