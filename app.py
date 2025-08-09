@@ -85,7 +85,7 @@ def carregar_stickers(pasta: str = "pixel"):
     for p in arquivos:
         try:
             img = Image.open(p).convert("RGBA")
-            # opcional: redimensionar para agilizar no mobile (comenta se quiser tamanho original)
+            # redimensiona suave pra acelerar no mobile (comente se quiser original)
             img.thumbnail((512, 512))
             imgs.append(img)
         except Exception:
@@ -99,45 +99,55 @@ today = str(date.today())
 if "goal_ml" not in st.session_state: st.session_state.goal_ml = 3500
 if "cup_ml"  not in st.session_state: st.session_state.cup_ml  = 350
 if "counts"  not in st.session_state: st.session_state.counts  = {}
-if today not in st.session_state.counts: st.session_state.counts[today] = 0
-if "pixel_idx" not in st.session_state: st.session_state.pixel_idx = 0
-if "pixel_shuffle" not in st.session_state:
-    st.session_state.pixel_shuffle = list(range(len(stickers)))
-    random.shuffle(st.session_state.pixel_shuffle)
-if "flash" not in st.session_state: st.session_state.flash = False
+if "day_key" not in st.session_state: st.session_state.day_key = today
+if "flash"   not in st.session_state: st.session_state.flash   = False
 
-count   = st.session_state.counts[today]
+# lista de índices exibidos HOJE (o que já está na tela não muda)
+if "shown_indices" not in st.session_state:
+    st.session_state.shown_indices = []  # ordem de exibição de hoje
+
+# pool embaralhado de índices para consumir HOJE (garante “diferente a cada clique”)
+if "pool_indices" not in st.session_state:
+    st.session_state.pool_indices = list(range(len(stickers)))
+    random.shuffle(st.session_state.pool_indices)
+
+# troca de dia? reseta tudo pra hoje começar do zero
+if st.session_state.day_key != today:
+    st.session_state.day_key = today
+    st.session_state.counts[today] = 0
+    st.session_state.shown_indices = []
+    st.session_state.pool_indices = list(range(len(stickers)))
+    random.shuffle(st.session_state.pool_indices)
+
+# count do dia atual é o tamanho do que já mostramos
+st.session_state.counts.setdefault(today, 0)
+st.session_state.counts[today] = len(st.session_state.shown_indices)
+
 goal_ml = st.session_state.goal_ml
 cup_ml  = st.session_state.cup_ml
+count   = st.session_state.counts[today]
 total   = count * cup_ml
 pct     = min(int(total / goal_ml * 100), 100)
 
 # ================== FUNÇÕES ==================
 def incentivo(p):
     if p == 0:   return "Começa com um golinho? 🥺👉👈"
-    if p < 20:   return "Amooo! Já senti a sede indo embora 💖"
-    if p < 40:   return "Good girl! Segue no foco que você tá brilhando ✨"
-    if p < 60:   return "Metade do copão vem aí! Orgulho de você 🥹"
-    if p < 80:   return "Quase láaa! Só mais uns golinhos 😘"
-    if p < 100:  return "Últimos goles pra vitória! 🏁💪"
+    if p < 20:   return "Primeiro passo dado! 💖"
+    if p < 40:   return "Good girl! Segue no foco ✨"
+    if p < 60:   return "Metade do copão chegando! Orgulho 🥹"
+    if p < 80:   return "Quase lá! Só mais uns golinhos 😘"
+    if p < 100:  return "Reta final, você consegue! 🏁💪"
     return "META BATIDA! Princesinha hidratadaaa! 🥳💦"
 
-def pegar_imagem_por_indice(i: int, modo: str):
+def proximo_indice_para_hoje():
+    """Puxa o próximo índice do pool embaralhado; se acabar, reembaralha para permitir mais cliques sem repetir até esgotar novamente."""
     if not stickers:
         return None
-    if modo == "Ciclar na ordem":
-        return stickers[i % len(stickers)]
-    elif modo == "Aleatório a cada copinho":
-        # avança na lista embaralhada
-        if st.session_state.pixel_idx >= len(stickers):
-            st.session_state.pixel_shuffle = list(range(len(stickers)))
-            random.shuffle(st.session_state.pixel_shuffle)
-            st.session_state.pixel_idx = 0
-        idx = st.session_state.pixel_shuffle[st.session_state.pixel_idx]
-        st.session_state.pixel_idx += 1
-        return stickers[idx]
-    else:
-        return None
+    if not st.session_state.pool_indices:
+        # todas já usadas hoje; reembaralha pra permitir continuar (agora pode repetir)
+        st.session_state.pool_indices = list(range(len(stickers)))
+        random.shuffle(st.session_state.pool_indices)
+    return st.session_state.pool_indices.pop(0)
 
 # ================== CABEÇALHO / CARD ==================
 st.markdown("<div class='container'><div class='card'>", unsafe_allow_html=True)
@@ -148,20 +158,24 @@ st.markdown("<div class='subtitle'>Clica no botão pra ganhar um copinho fofo �
 col1, col2 = st.columns(2, gap="small")
 with col1:
     if st.button("➕ um copinho", use_container_width=True):
-        st.session_state.counts[today] += 1
-        st.session_state.flash = True
-        if (st.session_state.counts[today] * cup_ml) >= goal_ml:
+        idx = proximo_indice_para_hoje()
+        if idx is not None:
+            st.session_state.shown_indices.append(idx)  # adiciona novo “copo” com imagem diferente
+            st.session_state.flash = True               # flash cintilante
+        # balões se bateu a meta
+        if (len(st.session_state.shown_indices) * cup_ml) >= goal_ml:
             st.balloons()
         st.rerun()
+
 with col2:
     if st.button("↩️ Desfazer", use_container_width=True):
-        if st.session_state.counts[today] > 0:
-            st.session_state.counts[today] -= 1
+        if st.session_state.shown_indices:
+            st.session_state.shown_indices.pop()  # remove o último “copo”
             st.session_state.flash = True
             st.rerun()
 
-# ================== PROGRESSO ==================
-total = st.session_state.counts[today] * cup_ml
+# ================== PROGRESSO + MENSAGEM ==================
+total = len(st.session_state.shown_indices) * cup_ml
 pct   = min(int(total / goal_ml * 100), 100)
 st.markdown(f"""
 <div class="progress-wrap">
@@ -170,46 +184,21 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Mensagem fofinha
 st.markdown(f"<div class='msg'>{incentivo(pct)}</div>", unsafe_allow_html=True)
 
-# ================== SIDEBAR (config) ==================
-with st.sidebar:
-    st.header("⚙️ Configurações")
-    st.session_state.goal_ml = st.number_input("Meta diária (ml)", 200, 10000, st.session_state.goal_ml, 100)
-    st.session_state.cup_ml  = st.number_input("Tamanho do copo (ml)", 50, 1000, st.session_state.cup_ml, 50)
-
-    st.markdown("---")
-    st.subheader("Copinhos (pasta pixel/)")
-    modo = st.radio("Como exibir?", ["Aleatório a cada copinho", "Ciclar na ordem", "Mostrar todos (grade)"], index=0)
-    if modo == "Aleatório a cada copinho" and st.button("🔀 Reembaralhar"):
-        st.session_state.pixel_shuffle = list(range(len(stickers)))
-        random.shuffle(st.session_state.pixel_shuffle)
-        st.session_state.pixel_idx = 0
-    if st.button("🔄 Resetar dia"):
-        st.session_state.counts[today] = 0
-
-# ================== RENDER COPINHOS ==================
-emoji_pack = ["🥤","🧃","🫖","🍹","🧋","🍑","💖","🌸","⭐","🫧"]
-
+# ================== RENDER COPINHOS DE HOJE (permanecem) ==================
 st.markdown("<div class='cups'>", unsafe_allow_html=True)
-if st.session_state.counts[today] == 0 and modo != "Mostrar todos (grade)":
+if not st.session_state.shown_indices:
     st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um? 💕</div>", unsafe_allow_html=True)
 else:
-    if modo == "Mostrar todos (grade)" and stickers:
-        cols = st.columns(4)
-        for i, img in enumerate(stickers):
-            with cols[i % 4]:
-                st.image(img, use_container_width=True)
-    else:
-        cols = st.columns(4)
-        for i in range(st.session_state.counts[today]):
-            img = pegar_imagem_por_indice(i, modo)
-            with cols[i % 4]:
-                if img is not None:
-                    st.image(img, use_container_width=True)
-                else:
-                    st.markdown(f"<div class='cup'>{random.choice(emoji_pack)}</div>", unsafe_allow_html=True)
+    cols = st.columns(4)
+    for i, idx in enumerate(st.session_state.shown_indices):
+        with cols[i % 4]:
+            if stickers:
+                st.image(stickers[idx], use_container_width=True)
+            else:
+                # fallback se não houver imagens em /pixel
+                st.markdown("<div class='cup'>🥤</div>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("</div></div>", unsafe_allow_html=True)  # fecha card/container
@@ -218,4 +207,13 @@ st.markdown("</div></div>", unsafe_allow_html=True)  # fecha card/container
 if st.session_state.flash:
     st.session_state.flash = False
     st.markdown("<div class='flash'></div>", unsafe_allow_html=True)
-    # não dá pra "esperar animar" sem travar; a próxima interação limpa sozinho
+
+# ================== SIDEBAR (config) ==================
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    st.session_state.goal_ml = st.number_input("Meta diária (ml)", 200, 10000, st.session_state.goal_ml, 100)
+    st.session_state.cup_ml  = st.number_input("Tamanho do copo (ml)", 50, 1000, st.session_state.cup_ml, 50)
+    st.caption("As imagens ficam fixas durante o dia. No dia seguinte, começa outra ordem aleatória 💕")
+    if st.button("🔄 Resetar dia (manual)"):
+        st.session_state.day_key = ""  # força reset no próximo rerun
+        st.rerun()
