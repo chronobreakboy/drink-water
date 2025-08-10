@@ -90,7 +90,7 @@ def load_images(folder="pixel"):
     for p in files:
         try:
             im = Image.open(p).convert("RGBA")
-            im.thumbnail((52, 52))
+            im.thumbnail((512, 512))
             imgs.append({"path": str(p), "img": im})
         except Exception:
             pass
