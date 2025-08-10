@@ -90,7 +90,7 @@ def load_images(folder="pixel"):
     for p in files:
         try:
             im = Image.open(p).convert("RGBA")
-            im.thumbnail((512, 512))
+            im.thumbnail((52, 52))
             imgs.append({"path": str(p), "img": im})
         except Exception:
             pass
@@ -103,11 +103,11 @@ images = load_images("pixel")
 def load_yay_b64(path="yay.mp3"):
     p = Path(path)
     if not p.exists():
-        return None
+        return ""
     b = p.read_bytes()
     return base64.b64encode(b).decode("ascii")
 
-YAY_B64 = load_yay_b64("yay.mp3") or ""
+YAY_B64 = load_yay_b64("yay.mp3")
 
 # ================== PERSISTÊNCIA (por dia) ==================
 DATA_DIR = Path("data")
@@ -159,7 +159,7 @@ col1, col2 = st.columns(2, gap="small")
 clicked = col1.button("➕  um copinho", use_container_width=True, key="add")
 undo    = col2.button("↩️  Desfazer",   use_container_width=True, key="undo")
 
-# ================== JS: ESTILO + SOM NO iPHONE (sem f-string) ==================
+# ================== JS: ESTILO + SOM NO POINTERDOWN (iPhone) ==================
 st.markdown(
     "<script>(function(){"
     "const BTN_ADD_LABEL='um copinho';"
@@ -176,8 +176,8 @@ st.markdown(
       "window._playYay=function(){try{if(window._ac.state==='suspended')window._ac.resume();"
         "if(window._buf){const src=window._ac.createBufferSource();src.buffer=window._buf;src.connect(window._ac.destination);src.start();return;}"
         "const now=window._ac.currentTime;"
-        "function beep(f,t,d,type='sine',g=0.15){const o=window._ac.createOscillator(),G=window._ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(window._ac.destination);o.start(now+t);o.stop(now+t+d+0.05);}"
-        "beep(640,0.00,0.10,'sine',0.18);beep(520,0.10,0.12,'sine',0.16);beep(1200,0.24,0.08,'triangle',0.12);"
+        "function beep(f,t,d,type='sine',g=0.18){const o=window._ac.createOscillator(),G=window._ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(window._ac.destination);o.start(now+t);o.stop(now+t+d+0.05);}"
+        "beep(640,0.00,0.10,'sine',0.22);beep(520,0.10,0.12,'sine',0.20);beep(1200,0.24,0.08,'triangle',0.16);"
       "}catch(e){}}"
     "}"
     "function styleButtons(){const btns=[...parent.document.querySelectorAll('button')];btns.forEach(b=>{if(b.innerText.includes(BTN_ADD_LABEL))b.classList.add('btn-primary');if(b.innerText.includes(BTN_UNDO_LABEL))b.classList.add('btn-sec');});}"
@@ -226,19 +226,19 @@ st.markdown(
 
 def incentivo(p):
     if p == 0:   return "Começa com um golinho? 🥺👉👈"
-    if p < 20:   return "Primeiro passo dado! 💖"
-    if p < 40:   return "Good girl! Segue no foco ✨"
-    if p < 60:   return "Metade do copão chegando! Orgulho 🥹"
-    if p < 80:   return "Quase lá! Só mais uns golinhos 😘"
-    if p < 100:  return "Reta final, você consegue! 🏁💪"
-    return "META BATIDA! Princesinha hidratadaaa! 🥳💦"
+    if p < 20:   return "Primeiro passo dado!"
+    if p < 40:   return "Good girl! Segue no foco"
+    if p < 60:   return "Metade do copão chegando!"
+    if p < 80:   return "Quase lá! Só mais uns goles"
+    if p < 100:  return "Reta final, você consegue!"
+    return "Meta batida! Princesinha hidratada!"
 
 st.markdown("<div class='msg'>"+incentivo(pct)+"</div>", unsafe_allow_html=True)
 
 # ================== GRID DE STICKERS ==================
 st.markdown("<div class='cups'>", unsafe_allow_html=True)
 if not st.session_state.shown_indices:
-    st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um? 💕</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um?</div>", unsafe_allow_html=True)
 else:
     cols = st.columns(4)
     for i, idx in enumerate(st.session_state.shown_indices):
@@ -250,7 +250,7 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ================== EFEITO VISUAL (sem áudio aqui) ==================
+# ================== EFEITO VISUAL + AUTOPLAY NO RERUN ==================
 if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
     burst = "".join(
@@ -258,19 +258,28 @@ if st.session_state.get("do_effect"):
         for _ in range(24)
     )
     st.markdown("<div class='flash'></div><div class='burst'>"+burst+"</div>", unsafe_allow_html=True)
-    # nonce só pra forçar rerender mínimo
-    nonce = st.session_state.fx_nonce
-    st.components.v1.html(
-        "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body><script>// nonce "
-        + str(nonce)
-        + "</script></body></html>",
-        height=1,
-        scrolling=False
+    # Autoplay HTML (desktop) ou WebAudio fallback onload
+    html_autoplay = (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
+        + (("<audio autoplay><source src='data:audio/mpeg;base64," + YAY_B64 + "' type='audio/mpeg'></audio>") if YAY_B64 else "")
+        + "<script>(function(){"
+          "try{"
+          "if(!"+("true" if YAY_B64 else "false")+"){"
+            "const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();"
+            "if(ac.state==='suspended'){ac.resume()};"
+            "const now=ac.currentTime;"
+            "function beep(f,t,d,type='sine',g=0.22){const o=ac.createOscillator(),G=ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(ac.destination);o.start(now+t);o.stop(now+t+d+0.05)}"
+            "beep(640,0.00,0.10,'sine',0.24);beep(520,0.10,0.12,'sine',0.22);beep(1200,0.24,0.08,'triangle',0.18);"
+          "}"
+          "}catch(e){}"
+        "})();</script>"
+        "</body></html>"
     )
+    st.components.v1.html(html_autoplay, height=1, scrolling=False)
 
 # ================== SIDEBAR ==================
 with st.sidebar:
-    st.header("⚙️ Configurações")
+    st.header("Configurações")
     new_goal = st.number_input("Meta diária (ml)", 200, 10000, st.session_state.goal_ml, 100)
     new_cup  = st.number_input("Tamanho do copo (ml)", 50, 1000, st.session_state.cup_ml, 50)
     if new_goal != st.session_state.goal_ml or new_cup != st.session_state.cup_ml:
@@ -278,7 +287,7 @@ with st.sidebar:
         st.session_state.cup_ml  = new_cup
         save_state(st.session_state.shown_indices, st.session_state.pool_indices, new_goal, new_cup)
     st.caption("As imagens de hoje ficam fixas. Amanhã sorteia outra ordem automaticamente.")
-    if st.button("🔄 Resetar dia (manual)"):
+    if st.button("Resetar dia (manual)"):
         st.session_state.shown_indices = []
         st.session_state.pool_indices  = list(range(len(images)))
         random.shuffle(st.session_state.pool_indices)
