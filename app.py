@@ -110,8 +110,7 @@ def load_yay_b64(path="yay.mp3"):
 YAY_B64 = load_yay_b64("yay.mp3")
 
 # ================== PERSISTÊNCIA (por dia) ==================
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR = Path("data"); DATA_DIR.mkdir(exist_ok=True)
 today = date.today().isoformat()
 state_path = DATA_DIR / f"state_{today}.json"
 
@@ -126,8 +125,7 @@ def load_state():
             return (d.get("shown_indices", []), d.get("pool_indices", []), d.get("goal_ml", 3500), d.get("cup_ml", 350))
         except Exception:
             pass
-    pool = list(range(len(images)))
-    random.shuffle(pool)
+    pool = list(range(len(images))); random.shuffle(pool)
     return [], pool, 3500, 350
 
 shown_indices_file, pool_indices_file, goal_default, cup_default = load_state()
@@ -159,32 +157,28 @@ col1, col2 = st.columns(2, gap="small")
 clicked = col1.button("➕  um copinho", use_container_width=True, key="add")
 undo    = col2.button("↩️  Desfazer",   use_container_width=True, key="undo")
 
-# ================== JS: ESTILO + SOM NO POINTERDOWN (iPhone) ==================
+# ================== ÁUDIO + ESTILO (pointerdown + elemento <audio>) ==================
+# injeta um <audio> fixo e liga no pointerdown; re-liga a cada rerender
 st.markdown(
     "<script>(function(){"
     "const BTN_ADD_LABEL='um copinho';"
     "const BTN_UNDO_LABEL='Desfazer';"
-    "if(!window._cuteAudioInit){"
-      "window._cuteAudioInit=true;"
-      "const AC=window.AudioContext||window.webkitAudioContext;"
-      "window._ac=new AC();"
-      "window._buf=null;"
-      "const b64="+json.dumps(YAY_B64)+";"
-      "function b64ToArr(b64){if(!b64)return null;const s=atob(b64);const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a.buffer}"
-      "const ab=b64ToArr(b64);"
-      "if(ab){window._ac.decodeAudioData(ab.slice(0),buf=>window._buf=buf,()=>{});}"
-      "window._playYay=function(){try{if(window._ac.state==='suspended')window._ac.resume();"
-        "if(window._buf){const src=window._ac.createBufferSource();src.buffer=window._buf;src.connect(window._ac.destination);src.start();return;}"
-        "const now=window._ac.currentTime;"
-        "function beep(f,t,d,type='sine',g=0.18){const o=window._ac.createOscillator(),G=window._ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(window._ac.destination);o.start(now+t);o.stop(now+t+d+0.05);}"
-        "beep(640,0.00,0.10,'sine',0.22);beep(520,0.10,0.12,'sine',0.20);beep(1200,0.24,0.08,'triangle',0.16);"
-      "}catch(e){}}"
-    "}"
+    # cria/garante <audio id='yayAudio'>
+    "let aud=document.getElementById('yayAudio');"
+    "if(!aud){aud=document.createElement('audio');aud.id='yayAudio';aud.setAttribute('preload','auto');aud.style.display='none';document.body.appendChild(aud);}"
+    "aud.src="+json.dumps(("data:audio/mpeg;base64,"+YAY_B64) if YAY_B64 else "");+
+    # webaudio fallback
+    "if(!window._ac){window._ac=null}"
+    "function ensureAC(){if(!window._ac){const AC=window.AudioContext||window.webkitAudioContext;window._ac=new AC();}if(window._ac.state==='suspended'){window._ac.resume();}}"
+    "function beepFallback(){try{ensureAC();const ac=window._ac;const now=ac.currentTime;"
+    "function beep(f,t,d,type='sine',g=0.22){const o=ac.createOscillator(),G=ac.createGain();o.type=type;o.frequency.value=f;"
+    "G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);"
+    "o.connect(G).connect(ac.destination);o.start(now+t);o.stop(now+t+d+0.05);}beep(640,0.00,0.10,'sine',0.24);beep(520,0.10,0.12,'sine',0.22);beep(1200,0.24,0.08,'triangle',0.18);}catch(e){}}"
+    "function playYay(){if(aud&&aud.src){try{aud.currentTime=0;const p=aud.play();if(p&&p.catch){p.catch(()=>{beepFallback()})}}catch(e){beepFallback()}}else{beepFallback()}}"
     "function styleButtons(){const btns=[...parent.document.querySelectorAll('button')];btns.forEach(b=>{if(b.innerText.includes(BTN_ADD_LABEL))b.classList.add('btn-primary');if(b.innerText.includes(BTN_UNDO_LABEL))b.classList.add('btn-sec');});}"
-    "function bindSound(){const btn=[...parent.document.querySelectorAll('button')].find(b=>b.innerText.includes(BTN_ADD_LABEL));if(btn&&!btn.dataset.soundBound){btn.addEventListener('pointerdown',()=>{try{window._playYay()}catch(e){}},{passive:true});btn.dataset.soundBound='1';}}"
+    "function bindSound(){const btn=[...parent.document.querySelectorAll('button')].find(b=>b.innerText.includes(BTN_ADD_LABEL));if(btn&&!btn.dataset.soundBound){btn.addEventListener('pointerdown',()=>{playYay()},{passive:true});btn.dataset.soundBound='1';}}"
     "styleButtons();bindSound();"
-    "const mo=new MutationObserver(()=>{styleButtons();bindSound();});"
-    "mo.observe(parent.document.body,{subtree:true,childList:true});"
+    "const mo=new MutationObserver(()=>{styleButtons();bindSound();});mo.observe(parent.document.body,{subtree:true,childList:true});"
     "})();</script>",
     unsafe_allow_html=True
 )
@@ -253,26 +247,25 @@ st.markdown("</div></div>", unsafe_allow_html=True)
 # ================== EFEITO VISUAL + AUTOPLAY NO RERUN ==================
 if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
+    # remove efeitos anteriores pra reanimar sempre
+    st.components.v1.html("<script>(function(){document.querySelectorAll('.flash,.burst').forEach(e=>e.remove());})();</script>", height=0)
     burst = "".join(
         f"<span style='--x:{random.randint(-160,160)}px; --y:{random.randint(-140,140)}px'>{random.choice(['✨','💧','🌟','🫧','💖','🎉'])}</span>"
         for _ in range(24)
     )
     st.markdown("<div class='flash'></div><div class='burst'>"+burst+"</div>", unsafe_allow_html=True)
-    # Autoplay HTML (desktop) ou WebAudio fallback onload
+    # Autoplay no rerun (desktop); se MP3 faltar, usa beep onload
     html_autoplay = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
         + (("<audio autoplay><source src='data:audio/mpeg;base64," + YAY_B64 + "' type='audio/mpeg'></audio>") if YAY_B64 else "")
-        + "<script>(function(){"
-          "try{"
+        + "<script>(function(){try{"
           "if(!"+("true" if YAY_B64 else "false")+"){"
-            "const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();"
-            "if(ac.state==='suspended'){ac.resume()};"
+            "const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();if(ac.state==='suspended'){ac.resume()};"
             "const now=ac.currentTime;"
             "function beep(f,t,d,type='sine',g=0.22){const o=ac.createOscillator(),G=ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(ac.destination);o.start(now+t);o.stop(now+t+d+0.05)}"
             "beep(640,0.00,0.10,'sine',0.24);beep(520,0.10,0.12,'sine',0.22);beep(1200,0.24,0.08,'triangle',0.18);"
           "}"
-          "}catch(e){}"
-        "})();</script>"
+          "}catch(e){}})();</script>"
         "</body></html>"
     )
     st.components.v1.html(html_autoplay, height=1, scrolling=False)
