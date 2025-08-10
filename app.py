@@ -6,7 +6,7 @@ import json, random, base64
 
 st.set_page_config(page_title="Beba Água 🌸", page_icon="💧", layout="centered")
 
-# ================== ESTRELAS ==================
+# ================== ESTRELAS (HTML) ==================
 STAR_COUNT = 28
 random.seed(42)
 stars_html = "\n".join(
@@ -14,7 +14,7 @@ stars_html = "\n".join(
     for _ in range(STAR_COUNT)
 )
 
-# ================== CSS (fora do f-string) ==================
+# ================== CSS (fora de f-string) ==================
 st.markdown("""
 <style>
 :root{
@@ -52,7 +52,7 @@ html,body,[data-testid="stAppViewContainer"]{
 .container{max-width:520px;margin:0 auto}
 .card{background:var(--card);border:3px solid var(--stroke);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;position:relative;padding:16px}
 .title{text-align:center;font-size:32px;font-weight:800;color:#6e4d00;text-shadow:0 1px 0 #fff3;margin:6px 0}
-.subtitle{text-align:center;font-size:14px;color:var(--muted);margin-bottom:14px}
+.subtitle{text-align:center;font-size:14px;color:#6f5b51;margin-bottom:14px}
 .stButton>button{width:100%;padding:16px 18px;font-weight:900;border-radius:var(--radius);border:0;box-shadow:var(--shadow);letter-spacing:.2px;transform:translateY(0);transition:transform .05s ease,filter .15s ease}
 .btn-primary{background:var(--btn-grad);color:#5a2a37}
 .btn-primary:hover{filter:brightness(1.05);transform:translateY(-1px)}
@@ -71,7 +71,7 @@ html,body,[data-testid="stAppViewContainer"]{
 @keyframes flashPop{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
 .burst{position:fixed;left:50%;top:46%;width:0;height:0;pointer-events:none;z-index:5}
 .burst span{position:absolute;font-size:22px;animation:fly .8s ease-out forwards;opacity:0}
-@keyframes fly{0%{transform:translate(-50%,-50%) scale(.6);opacity:.0}20%{opacity:1}100%{transform:translate(var(--x), var(--y)) scale(1.2);opacity:0}}
+@keyframes fly{0%{transform:translate(-50%, -50%) scale(.6);opacity:.0}20%{opacity:1}100%{transform:translate(var(--x), var(--y)) scale(1.2);opacity:0}}
 @media (max-width:420px){.title{font-size:26px}.cups{grid-template-columns:repeat(4,1fr)}}
 </style>
 <div class="sky"><div class="clouds"></div></div>
@@ -110,7 +110,8 @@ def load_yay_b64(path="yay.mp3"):
 YAY_B64 = load_yay_b64("yay.mp3")
 
 # ================== PERSISTÊNCIA (por dia) ==================
-DATA_DIR = Path("data"); DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(exist_ok=True)
 today = date.today().isoformat()
 state_path = DATA_DIR / f"state_{today}.json"
 
@@ -125,7 +126,8 @@ def load_state():
             return (d.get("shown_indices", []), d.get("pool_indices", []), d.get("goal_ml", 3500), d.get("cup_ml", 350))
         except Exception:
             pass
-    pool = list(range(len(images))); random.shuffle(pool)
+    pool = list(range(len(images)))
+    random.shuffle(pool)
     return [], pool, 3500, 350
 
 shown_indices_file, pool_indices_file, goal_default, cup_default = load_state()
@@ -138,6 +140,7 @@ if "pool_indices"  not in st.session_state: st.session_state.pool_indices  = poo
 if "do_effect"     not in st.session_state: st.session_state.do_effect = False
 if "fx_nonce"      not in st.session_state: st.session_state.fx_nonce  = 0
 
+# saneamento
 max_idx = len(images) - 1
 st.session_state.shown_indices = [i for i in st.session_state.shown_indices if 0 <= i <= max_idx]
 st.session_state.pool_indices  = [i for i in st.session_state.pool_indices  if 0 <= i <= max_idx]
@@ -157,31 +160,120 @@ col1, col2 = st.columns(2, gap="small")
 clicked = col1.button("➕  um copinho", use_container_width=True, key="add")
 undo    = col2.button("↩️  Desfazer",   use_container_width=True, key="undo")
 
-# ================== ÁUDIO + ESTILO (pointerdown + elemento <audio>) ==================
-# injeta um <audio> fixo e liga no pointerdown; re-liga a cada rerender
-st.markdown(
-    "<script>(function(){"
-    "const BTN_ADD_LABEL='um copinho';"
-    "const BTN_UNDO_LABEL='Desfazer';"
-    # cria/garante <audio id='yayAudio'>
-    "let aud=document.getElementById('yayAudio');"
-    "if(!aud){aud=document.createElement('audio');aud.id='yayAudio';aud.setAttribute('preload','auto');aud.style.display='none';document.body.appendChild(aud);}"
-    "aud.src="+json.dumps(("data:audio/mpeg;base64,"+YAY_B64) if YAY_B64 else "");+
-    # webaudio fallback
-    "if(!window._ac){window._ac=null}"
-    "function ensureAC(){if(!window._ac){const AC=window.AudioContext||window.webkitAudioContext;window._ac=new AC();}if(window._ac.state==='suspended'){window._ac.resume();}}"
-    "function beepFallback(){try{ensureAC();const ac=window._ac;const now=ac.currentTime;"
-    "function beep(f,t,d,type='sine',g=0.22){const o=ac.createOscillator(),G=ac.createGain();o.type=type;o.frequency.value=f;"
-    "G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);"
-    "o.connect(G).connect(ac.destination);o.start(now+t);o.stop(now+t+d+0.05);}beep(640,0.00,0.10,'sine',0.24);beep(520,0.10,0.12,'sine',0.22);beep(1200,0.24,0.08,'triangle',0.18);}catch(e){}}"
-    "function playYay(){if(aud&&aud.src){try{aud.currentTime=0;const p=aud.play();if(p&&p.catch){p.catch(()=>{beepFallback()})}}catch(e){beepFallback()}}else{beepFallback()}}"
-    "function styleButtons(){const btns=[...parent.document.querySelectorAll('button')];btns.forEach(b=>{if(b.innerText.includes(BTN_ADD_LABEL))b.classList.add('btn-primary');if(b.innerText.includes(BTN_UNDO_LABEL))b.classList.add('btn-sec');});}"
-    "function bindSound(){const btn=[...parent.document.querySelectorAll('button')].find(b=>b.innerText.includes(BTN_ADD_LABEL));if(btn&&!btn.dataset.soundBound){btn.addEventListener('pointerdown',()=>{playYay()},{passive:true});btn.dataset.soundBound='1';}}"
-    "styleButtons();bindSound();"
-    "const mo=new MutationObserver(()=>{styleButtons();bindSound();});mo.observe(parent.document.body,{subtree:true,childList:true});"
-    "})();</script>",
-    unsafe_allow_html=True
-)
+# ================== JS PERSISTENTE (bind + áudio + partículas no pointerdown) ==================
+# uso de template + replace pra injetar o base64 com segurança (sem f-string e sem ;+)
+js_template = r"""
+<script>
+(function(){
+  if(window._cuteInit) return; window._cuteInit = true;
+
+  const BTN_ADD_LABEL = 'um copinho';
+  const BTN_UNDO_LABEL = 'Desfazer';
+  const B64 = __B64__;
+
+  // cria/garante <audio> oculto
+  function ensureAudio(){
+    let aud = document.getElementById('yayAudio');
+    if(!aud){
+      aud = document.createElement('audio');
+      aud.id = 'yayAudio';
+      aud.preload = 'auto';
+      aud.style.display = 'none';
+      document.body.appendChild(aud);
+    }
+    if(B64 && (!aud.src || !aud.src.startsWith('data:audio/mpeg;base64,'))){
+      aud.src = 'data:audio/mpeg;base64,' + B64;
+    }
+    return aud;
+  }
+
+  function ensureAC(){
+    if(!window._ac){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      window._ac = new AC();
+    }
+    if(window._ac.state === 'suspended'){ window._ac.resume(); }
+    return window._ac;
+  }
+
+  function beepFallback(){
+    try{
+      const ac = ensureAC();
+      const now = ac.currentTime;
+      function beep(f,t,d,type='sine',g=0.24){
+        const o=ac.createOscillator(), G=ac.createGain();
+        o.type=type; o.frequency.value=f;
+        G.gain.setValueAtTime(0.0001, now+t);
+        G.gain.exponentialRampToValueAtTime(g, now+t+0.03);
+        G.gain.exponentialRampToValueAtTime(0.0001, now+t+d);
+        o.connect(G).connect(ac.destination);
+        o.start(now+t); o.stop(now+t+d+0.05);
+      }
+      beep(640,0.00,0.10,'sine',0.26);
+      beep(520,0.10,0.12,'sine',0.22);
+      beep(1200,0.24,0.08,'triangle',0.18);
+    }catch(e){}
+  }
+
+  function playYay(){
+    const aud = ensureAudio();
+    if(aud && aud.src){
+      try{
+        aud.currentTime = 0;
+        const p = aud.play();
+        if(p && p.catch){ p.catch(()=>{beepFallback()}); }
+      }catch(e){ beepFallback(); }
+    }else{
+      beepFallback();
+    }
+  }
+
+  // partículas instantâneas no pointerdown (independente do rerun)
+  function burstNow(){
+    const container = document.createElement('div');
+    container.className = 'burst';
+    const flash = document.createElement('div');
+    flash.className = 'flash';
+    const emojis = ['✨','💧','🌟','🫧','💖','🎉'];
+    for(let i=0;i<24;i++){
+      const span = document.createElement('span');
+      const x = (Math.random()*320-160).toFixed(0);
+      const y = (Math.random()*280-140).toFixed(0);
+      span.style.setProperty('--x', x+'px');
+      span.style.setProperty('--y', y+'px');
+      span.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+      container.appendChild(span);
+    }
+    document.body.appendChild(flash);
+    document.body.appendChild(container);
+    setTimeout(()=>{flash.remove();container.remove();}, 1100);
+  }
+
+  function styleButtons(){
+    const btns = Array.from(parent.document.querySelectorAll('button'));
+    btns.forEach(b=>{
+      if(b.innerText.includes(BTN_ADD_LABEL)) b.classList.add('btn-primary');
+      if(b.innerText.includes(BTN_UNDO_LABEL)) b.classList.add('btn-sec');
+    });
+  }
+
+  function bindSound(){
+    const btn = Array.from(parent.document.querySelectorAll('button'))
+                .find(b=>b.innerText.includes(BTN_ADD_LABEL));
+    if(btn && !btn.dataset.soundBound){
+      btn.addEventListener('pointerdown', ()=>{ playYay(); burstNow(); }, {passive:true});
+      btn.dataset.soundBound = '1';
+    }
+  }
+
+  styleButtons(); bindSound();
+  const mo = new MutationObserver(()=>{ styleButtons(); bindSound(); });
+  mo.observe(parent.document.body, {subtree:true, childList:true});
+})();
+</script>
+"""
+js = js_template.replace("__B64__", json.dumps(YAY_B64))
+st.markdown(js, unsafe_allow_html=True)
 
 # ================== LÓGICA CLIQUES ==================
 if clicked:
@@ -220,19 +312,19 @@ st.markdown(
 
 def incentivo(p):
     if p == 0:   return "Começa com um golinho? 🥺👉👈"
-    if p < 20:   return "Primeiro passo dado!"
-    if p < 40:   return "Good girl! Segue no foco"
-    if p < 60:   return "Metade do copão chegando!"
-    if p < 80:   return "Quase lá! Só mais uns goles"
-    if p < 100:  return "Reta final, você consegue!"
-    return "Meta batida! Princesinha hidratada!"
+    if p < 20:   return "Primeiro passo dado! 💖"
+    if p < 40:   return "Good girl! Segue no foco ✨"
+    if p < 60:   return "Metade do copão chegando! Orgulho 🥹"
+    if p < 80:   return "Quase lá! Só mais uns golinhos 😘"
+    if p < 100:  return "Reta final, você consegue! 🏁💪"
+    return "META BATIDA! Princesinha hidratadaaa! 🥳💦"
 
 st.markdown("<div class='msg'>"+incentivo(pct)+"</div>", unsafe_allow_html=True)
 
 # ================== GRID DE STICKERS ==================
 st.markdown("<div class='cups'>", unsafe_allow_html=True)
 if not st.session_state.shown_indices:
-    st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um?</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Sem copinhos ainda… bora começar com um? 💕</div>", unsafe_allow_html=True)
 else:
     cols = st.columns(4)
     for i, idx in enumerate(st.session_state.shown_indices):
@@ -247,32 +339,38 @@ st.markdown("</div></div>", unsafe_allow_html=True)
 # ================== EFEITO VISUAL + AUTOPLAY NO RERUN ==================
 if st.session_state.get("do_effect"):
     st.session_state.do_effect = False
-    # remove efeitos anteriores pra reanimar sempre
+    # limpa vestígios pra reanimar sempre
     st.components.v1.html("<script>(function(){document.querySelectorAll('.flash,.burst').forEach(e=>e.remove());})();</script>", height=0)
+
     burst = "".join(
         f"<span style='--x:{random.randint(-160,160)}px; --y:{random.randint(-140,140)}px'>{random.choice(['✨','💧','🌟','🫧','💖','🎉'])}</span>"
         for _ in range(24)
     )
     st.markdown("<div class='flash'></div><div class='burst'>"+burst+"</div>", unsafe_allow_html=True)
-    # Autoplay no rerun (desktop); se MP3 faltar, usa beep onload
-    html_autoplay = (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
-        + (("<audio autoplay><source src='data:audio/mpeg;base64," + YAY_B64 + "' type='audio/mpeg'></audio>") if YAY_B64 else "")
-        + "<script>(function(){try{"
-          "if(!"+("true" if YAY_B64 else "false")+"){"
+
+    # Autoplay no rerun (reforço pro desktop)
+    if YAY_B64:
+        st.components.v1.html(
+            f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
+            f"<audio autoplay><source src='data:audio/mpeg;base64,{YAY_B64}' type='audio/mpeg'></audio>"
+            f"</body></html>",
+            height=1, scrolling=False
+        )
+    else:
+        # beep no onload se não houver MP3
+        st.components.v1.html(
+            "<!DOCTYPE html><html><head><meta charset='utf-8'></head><body><script>(function(){try{"
             "const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();if(ac.state==='suspended'){ac.resume()};"
             "const now=ac.currentTime;"
-            "function beep(f,t,d,type='sine',g=0.22){const o=ac.createOscillator(),G=ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(ac.destination);o.start(now+t);o.stop(now+t+d+0.05)}"
-            "beep(640,0.00,0.10,'sine',0.24);beep(520,0.10,0.12,'sine',0.22);beep(1200,0.24,0.08,'triangle',0.18);"
-          "}"
-          "}catch(e){}})();</script>"
-        "</body></html>"
-    )
-    st.components.v1.html(html_autoplay, height=1, scrolling=False)
+            "function beep(f,t,d,type='sine',g=0.24){const o=ac.createOscillator(),G=ac.createGain();o.type=type;o.frequency.value=f;G.gain.setValueAtTime(0.0001,now+t);G.gain.exponentialRampToValueAtTime(g,now+t+0.03);G.gain.exponentialRampToValueAtTime(0.0001,now+t+d);o.connect(G).connect(ac.destination);o.start(now+t);o.stop(now+t+d+0.05)}"
+            "beep(640,0.00,0.10,'sine',0.26);beep(520,0.10,0.12,'sine',0.22);beep(1200,0.24,0.08,'triangle',0.18);"
+            "}catch(e){}})();</script></body></html>",
+            height=1, scrolling=False
+        )
 
 # ================== SIDEBAR ==================
 with st.sidebar:
-    st.header("Configurações")
+    st.header("⚙️ Configurações")
     new_goal = st.number_input("Meta diária (ml)", 200, 10000, st.session_state.goal_ml, 100)
     new_cup  = st.number_input("Tamanho do copo (ml)", 50, 1000, st.session_state.cup_ml, 50)
     if new_goal != st.session_state.goal_ml or new_cup != st.session_state.cup_ml:
@@ -280,7 +378,7 @@ with st.sidebar:
         st.session_state.cup_ml  = new_cup
         save_state(st.session_state.shown_indices, st.session_state.pool_indices, new_goal, new_cup)
     st.caption("As imagens de hoje ficam fixas. Amanhã sorteia outra ordem automaticamente.")
-    if st.button("Resetar dia (manual)"):
+    if st.button("🔄 Resetar dia (manual)"):
         st.session_state.shown_indices = []
         st.session_state.pool_indices  = list(range(len(images)))
         random.shuffle(st.session_state.pool_indices)
